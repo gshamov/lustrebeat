@@ -4,7 +4,8 @@ Welcome to Lustrebeat.
 
 Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from various "stats" files of the Lustre filesystem, and that without much thinking. So the design decisions were as follows.
 
-* Using Golang glob to check for the stats files and grab whatever found. Tag the values by the components of the path (FS name, OST name, etc.) of each of the stat files.
+* Using Golang glob to check for the stats files and grab whatever found. This means that the beat should run on the host (be that client, MDS, or OSS) it collects metrics from. 
+* Tag the values by the components of the path (FS name, OST name, etc.) of each of the stat files.
 * Using a simple parser for {llite, OST, MDT} stats files that would be agnostic to the names of the fields there. Every line will be collected.
 * Lustre Job Stats: they are actually Yaml. Using Go-Yaml2 library to parse them in one blow, again, collecting every metric there.
 * Single ES document per stat file (as opposed to single-metric-value documents).
@@ -12,7 +13,7 @@ Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from
 * In addition to Lustre stats, generic host metrics (CPU, Memory, Network etc.) were added, using the excellent [Shirou gopsutil library](https://github.com/shirou/gopsutil).
 * Plus Infiniband counters and ZFS pool and stats since interconnect is often IN or OPA and the storage backend is ZFS.
 
-The drawback of this approach is obvious: there are too many metrics collected on any Lustre system in production. Especially if Exports and Jobstats collection is turned on.  
+The drawback of this approach is obvious: there are too many metrics collected on any Lustre system in production. Especially if Exports and Jobstats collection is turned on. On the other hand, if you want to explore what Lustre or ZFS has in its stats files, this beat gives you every field present.  
 
 ## Getting Started with Lustrebeat
 
@@ -158,9 +159,10 @@ make package
 
 This will fetch and create all images required for the build process. The hole process to finish can take several minutes.
 
-## Missing things ##
+## Missing things, TODO ##
 
-A lot. Fields/templates to be done; tests, documentation, packaging as well.
+A lot is missing. Fields/templates to be done; tests, documentation, packaging as well. 
+To linit the amount of ES data it generates, a filtering mechanism perhaps would help. 
 
 ## Similar / better projects
 
