@@ -2,14 +2,17 @@
 
 Welcome to Lustrebeat.
 
-Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from various "stats" files of the Lustre filesystem, and that without much thinking. So the decisions as follows.
+Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from various "stats" files of the Lustre filesystem, and that without much thinking. So the design decisions were as follows.
 
 * Using Golang glob to check for the stats files and grab whatever found. Tag the values by the components of the path (FS name, OST name, etc.)
-* Using a simple parser for stats files that would be agnostic to the names of the counters. Every line will be collected.
-* Following the Metricbeat ideology, pass the raw counters to ES or LS, withot any attempts to calculate rates etc. Everything to be done on the ES side.
+* Using a simple parser for {llite, OST, MDT} stats files that would be agnostic to the names of the counters. Every line will be collected.
+* Lustre Job Stats: they are actually Yaml. Using Go-Yaml2 library to parse them in one blow, again, collecting every metric.
+* Single ES document per stat file (as opposed to single-metric-value documents).
+* Following the Metricbeat ideology, pass the raw metrics/counters to ES or LS, withot any attempts to calculate rates etc. Everything to be done on the ES side.
 * In addition to Lustre stats, generic host metrics (CPU, Memory, Network etc.) were added, using the excellent shirou library.
 * Plus Infiniband counters and ZFS pool and stats
 
+The drawback of this approach is obvious: there are too many metrics collected on any Lustre system in production. Especially if Exports and Jobstats collection is turned on.  
 
 ## Getting Started with Lustrebeat
 
