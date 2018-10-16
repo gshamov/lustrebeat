@@ -18,6 +18,7 @@ The drawback of this approach is obvious: there are too many metrics collected o
 
 Ensure that this folder is at the following location:
 `${GOPATH}/src/github.com/gshamov/lustrebeat`
+That is, ensure that GOPATH is set and you have checked out this repository being under ${GOPATH}/src/github.com/gshamov/
 
 ### Requirements
 
@@ -45,6 +46,7 @@ git clone -b v6.1.4 https://github.com/elastic/beats/
 go get github.com/gshamov/gopsutil/mem  # that one isnt really necessary, was an experiment for committed_as. Shirou does it all!
 go get github.com/shirou/gopsutil
 go get gopkg.in/yaml.v2	
+go get github.com/Masterminds/glide
 ```
 
 ### Init Project
@@ -83,6 +85,8 @@ To run Lustrebeat with debugging output enabled, run:
 ```
 ./lustrebeat -c lustrebeat.yml -e -d "*"
 ```
+
+Check lustrebeat.yml for the config options. GAS: as of now the "full" config is old and boilerplate. Not updated yet.
 
 
 ### Test
@@ -153,6 +157,10 @@ make package
 ```
 
 This will fetch and create all images required for the build process. The hole process to finish can take several minutes.
+
+## Missing things ##
+
+A lot. Fields/templates to be done; tests, documentation, packaging as well.
 
 ## Similar / better projects
 
