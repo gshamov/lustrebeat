@@ -2,14 +2,47 @@
 
 Welcome to Lustrebeat.
 
-Ensure that this folder is at the following location:
-`${GOPATH}/src/github.com/gshamov/lustrebeat`
+Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from various "stats" files of the Lustre filesystem, and that without much thinking. So the decisions as follows.
+
+* Using Golang glob to check for the stats files and grab whatever found. Tag the values by the components of the path (FS name, OST name, etc.)
+* Using a simple parser for stats files that would be agnostic to the names of the counters. Every line will be collected.
+* Following the Metricbeat ideology, pass the raw counters to ES or LS, withot any attempts to calculate rates etc. Everything to be done on the ES side.
+* In addition to Lustre stats, generic host metrics (CPU, Memory, Network etc.) were added, using the excellent shirou library.
+* Plus Infiniband counters and ZFS pool and stats
+
 
 ## Getting Started with Lustrebeat
 
+Ensure that this folder is at the following location:
+`${GOPATH}/src/github.com/gshamov/lustrebeat`
+
 ### Requirements
 
-* [Golang](https://golang.org/dl/) 1.7
+* [Golang](https://golang.org/dl/) 1.8 - 1.10
+* Python with cookiecutter installed. 
+
+On ComputeCanada systems the above means 
+
+```
+module load go; module load python
+virtualenv ck; source ck/bin/activate; pip install cookiecutter
+```
+
+* The following Golang packages: needs to be go get'd
+
+```
+go get github.com/gshamov/gopsutil/mem
+go get github.com/shirou/gopsutil
+go get gopkg.in/yaml.v2	
+```
+
+* And, finally, checkout a "good" version of beats into $GOPATH as follows. This one tested with 6.1.x .
+
+```
+mkdir -p $GOPATH/src/github.com/elastic/
+cd $GOPATH/src/github.com/elastic/
+git clone -b v6.1.4 https://github.com/elastic/beats/
+```
 
 ### Init Project
 To get running with Lustrebeat and also install the
@@ -50,6 +83,8 @@ To run Lustrebeat with debugging output enabled, run:
 
 
 ### Test
+
+GAS: the documentation below is a boilerplate thing from Beats library. I doubt the tests work as of now.
 
 To test Lustrebeat, run the following command:
 
