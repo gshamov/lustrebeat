@@ -1,0 +1,1106 @@
+head	1.15;
+access;
+symbols;
+locks
+	gshamov:1.15; strict;
+comment	@# @;
+
+
+1.15
+date	2018.10.16.18.11.46;	author gshamov;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	2018.02.13.19.38.22;	author gshamov;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	2018.01.22.18.57.29;	author gshamov;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	2018.01.22.17.08.47;	author gshamov;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	2018.01.16.23.01.00;	author gshamov;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	2018.01.16.15.48.00;	author gshamov;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2018.01.13.14.54.35;	author gshamov;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2018.01.12.20.34.41;	author gshamov;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2018.01.02.21.40.54;	author gshamov;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2018.01.02.20.43.41;	author gshamov;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2018.01.02.20.41.49;	author gshamov;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2018.01.02.20.26.18;	author gshamov;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2018.01.02.18.57.52;	author gshamov;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2018.01.02.17.47.53;	author gshamov;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2018.01.02.17.31.49;	author gshamov;	state Exp;
+branches;
+next	;
+
+
+desc
+@original boilerplate
+@
+
+
+1.15
+log
+@builds on graham
+@
+text
+@package beater
+
+import (
+	//"bytes"
+	"fmt"
+	"log" // how do I do logging from beats? May be their logp?
+	"path/filepath"
+
+	"strings"
+	"time"
+
+	"github.com/gshamov/gopsutil/mem"
+	//"github.com/shirou/gopsutil/cpu"
+	//"github.com/shirou/gopsutil/disk"
+	//"github.com/shirou/gopsutil/host"
+	"github.com/shirou/gopsutil/load"
+	//"github.com/shirou/gopsutil/net"
+
+	"github.com/elastic/beats/libbeat/beat"
+	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/logp"
+
+	"github.com/gshamov/lustrebeat/config"
+)
+
+// boilerplate
+type Lustrebeat struct {
+	done   chan struct{}
+	config config.Config
+	client beat.Client
+}
+
+// Creates beater
+func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
+	config := config.DefaultConfig
+	if err := cfg.Unpack(&config); err != nil {
+		return nil, fmt.Errorf("Error reading config file: %v", err)
+	}
+
+	bt := &Lustrebeat{
+		done:   make(chan struct{}),
+		config: config,
+	}
+	return bt, nil
+}
+
+// boilerplate function
+func (bt *Lustrebeat) Run(b *beat.Beat) error {
+	logp.Info("Lustrebeat is running! Hit CTRL-C to stop it.")
+
+	var err error
+	bt.client, err = b.Publisher.Connect()
+	if err != nil {
+		return err
+	}
+
+	ticker := time.NewTicker(bt.config.Period) // leftover from the boilerplate,
+	//I use it to see if all works with config disabling everything else
+	var counter uint64 // changed the type to coulnt carelessly!
+	counter = 1
+
+	// actually the counter it can be of use if we want to (un)skip every n-th beat
+	// for this or that metric
+
+	// Should learn how to use the config. Ok, it actually is bt.config.SomeName
+	// Defaults supposed to come from config.go so I do no checking here.
+	// Should these guys go to some init() or create() function?
+	
+        fmt.Println("Config::", bt.config)
+
+	llite := bt.config.Lustre.Llite
+	osc := bt.config.Lustre.Osc
+	oss := bt.config.Lustre.Oss
+	mds := bt.config.Lustre.Mds
+
+	
+	// exports are on for each of OSS, MDS. 
+	// Should I have selected jobstats as well as a single parameter?
+	exports := bt.config.Lustre.Exports
+	jobstats := bt.config.Lustre.Jobstats
+	
+	// we can also collect total KB counts from OSS, MDS stats.
+	getnum := bt.config.Lustre.GetNumbers
+	listnum := List2Set(bt.config.Lustre.ListOfNumbers)
+
+	// infiniband and network metrics now can filter for specific things too, more lists
+
+	listcounters := List2Set(bt.config.Host.ListOfCounters) // empty lists should work too, test that!
+	listnetworks := List2Set(bt.config.Host.ListOfNetworks)
+
+	// lets try if lists work from config. Comment in production.
+	//fmt.Printf("%T %v\n", bt.config, bt.config)
+
+	//Zfs stats if requested
+	zss := bt.config.Zfs.Stats
+	zps := bt.config.Zfs.Pools
+	listzstats := List2Set(bt.config.Zfs.ListOfZstats)
+	fmt.Printf("%T %v\n", bt.config.Zfs, bt.config.Zfs)
+
+	// glob the ZFS paths outside of the main loop
+	var ioz, zstats []string
+
+	if zps {
+		// is Glob again any better?
+		ioz, err = filepath.Glob("/proc/spl/kstat/zfs/*/io")
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%T %v\n", ioz, ioz)
+	}
+
+	if zss {
+		zstats, err = filepath.Glob(bt.config.Zfs.ZfsStatsPath)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%T %v\n", zstats, zstats)
+	}
+
+	// ok, lets collect all the stats that are the easy stats. Local FS is assumed, and io.ReadFile used
+	// the existencial assumptions is that Glob sees the files on a local FS.
+	// A refactoring to remote file access or lctl commands might need more checking.
+
+	// TODO: extract FS name and OSS name from procs filenames and tag records properly.
+
+	statslist := []string{}          // generic object-wide stats
+	expstats := []string{}           // lets have a separate list for exports for there are many of them
+	kbstats := make(map[string]bool) // a set of places with things like kbtotal
+
+	if llite {
+		llts := bt.config.Lustre.LliteStatsPath + "/stats"
+		statslist0, err := filepath.Glob(llts)
+		if err != nil {
+			log.Fatal(err)
+		}
+		statslist = append(statslist, statslist0...)
+	}
+
+	if osc {
+		oscs := bt.config.Lustre.OscStatsPath + "/stats"
+		statslist0, err := filepath.Glob(oscs)
+		if err != nil {
+			log.Fatal(err)
+		}
+		statslist = append(statslist, statslist0...)
+		if getnum {
+			for _, s := range statslist0 {
+				kbstats[s] = true
+			}
+		}
+	}
+
+	if mds {
+		mdss := bt.config.Lustre.MdsStatsPath + "/md_stats" // note that MDS-wide is not stats but md_stats
+		statslist0, err := filepath.Glob(mdss)
+		if err != nil {
+			log.Fatal(err)
+		}
+		statslist = append(statslist, statslist0...)
+		if getnum {
+			for _, s := range statslist0 {
+				kbstats[s] = true
+			}
+		}
+		if exports {
+			mdex := bt.config.Lustre.MdsStatsPath + bt.config.Lustre.ExportSuffix + "/stats"
+			statslist1, err := filepath.Glob(mdex)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			expstats = append(expstats, statslist1...)
+		}
+	}
+
+	if oss {
+		osss := bt.config.Lustre.OssStatsPath + "/stats"
+		statslist0, err := filepath.Glob(osss)
+		if err != nil {
+			log.Fatal(err)
+		}
+		statslist = append(statslist, statslist0...)
+		if getnum {
+			fmt.Println(statslist0)
+
+			for _, s := range statslist0 {
+				kbstats[s] = true
+			}
+		}
+		if exports {
+			oex := bt.config.Lustre.OssStatsPath + bt.config.Lustre.ExportSuffix + "/stats"
+			statslist1, err := filepath.Glob(oex)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			expstats = append(expstats, statslist1...)
+		}
+	}
+
+	fmt.Println(statslist, getnum, "kbstats::: ", kbstats)
+
+	// Jobstats probably need another list for them
+
+	joblist := []string{}
+	// re := regexp.MustCompile(`([a-z]+\:)`) // regexp for jobstats max:12345 out of the loop; outsourced
+
+	if jobstats && mds {
+		jms := bt.config.Lustre.MdsStatsPath + "/job_stats"
+		jm0, err := filepath.Glob(jms)
+		if err != nil {
+			log.Fatal(err)
+		}
+		joblist = append(joblist, jm0...)
+	}
+
+	if jobstats && oss {
+		jos := bt.config.Lustre.OssStatsPath + "/job_stats"
+		jo0, err := filepath.Glob(jos)
+		if err != nil {
+			log.Fatal(err)
+		}
+		joblist = append(joblist, jo0...)
+	}
+
+	// would be good to add a check above? llite is only on the clients.
+	// unlikely that MDS and OSS sts are available on the same machine either.
+
+	// MAIN LOOP from the Beat boilerplate
+	for {
+		select {
+		case <-bt.done:
+			return nil
+		case <-ticker.C:
+		}
+
+		if len(statslist) > 0 { // redundant because for?
+			for _, statfile := range statslist {
+				result, err := GetStatsFile1(statfile)
+				//GAS debug
+				//fmt.Println(result,err,"LUSTRE STAT DEBUG")
+				//GAS debug
+				if err != nil {
+					continue
+				}
+
+				// at this point I also need to know which stat is which?
+				// to determine if I want kbytes. ToFIx: doesnt work, doesnt publish either
+				if getnum {
+					if _, ok := kbstats[statfile]; ok {
+						fmt.Println("KBSTATS::::::", statfile, listnum)
+						// got either MDS or OST stats file here; get dirname and extract values
+						statsdir := filepath.Dir(statfile)
+						kbs, _ := GetValFiles(statsdir, listnum)
+						fmt.Println("KBS:: ", kbs)
+						for k, v := range kbs {
+							// probably need to add check if k already in
+							result[k] = v
+						}
+					}
+				}
+				//fmt.Println(result, err)
+				fs, obj, _, _ := MakeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+				event_llite := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":   "lustrestat",
+						"stats":  result,
+						"fs":     fs,
+						"object": obj,
+					},
+				}
+				bt.client.Publish(event_llite)
+				logp.Info("Event_llite sent")
+			}
+		}
+		// llite and general stats done
+
+		// lets do exports if any; nasty code duplication as usual
+		if len(expstats) > 0 { // redundant because for?
+			for _, statfile := range expstats {
+				result, err := GetStatsFile1(statfile)
+				if err != nil {
+					continue
+				}
+
+				//fmt.Println("Export", result, err)
+				fs, obj, ex, _ := MakeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+
+				event_llite := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":   "lustreexport", // should it be same? idk
+						"stats":  result,
+						"fs":     fs,
+						"object": obj,
+						"export": ex,
+					},
+				}
+				bt.client.Publish(event_llite)
+				logp.Info("Event_llite sent")
+			}
+		}
+		// exports done
+
+		// jobstats loop begins
+		if len(joblist) > 0 {
+			//fmt.Println(joblist)
+			for _, s := range joblist {
+				// outsourced the spagetti into jobstat.go
+				err := JobStat(bt, s)
+
+				if err != nil {
+					fmt.Println(err)
+					// what to do? to stop or not to stop? Logp?
+				}
+			}
+			// jobstats loop end
+		}
+
+		// generic load metrics (mostly) from gopsutil
+		// This is down to Host. config structure now
+		//LoadAvg: false,
+		//MemStat: false,
+		//IBCounters: false,
+		//NetIOCounters: false,
+		//fmt.Println("config.Host.LoadAvg: ", bt.config.Host.LoadAvg, "config.Host.MemStat: ", bt.config.Host.MemStat,)
+		
+		if bt.config.Host.LoadAvg || bt.config.Host.MemStat { // why bother separating them, either returns both
+			av, _ := load.Avg()           // can it ever fail?
+			mem, _ := mem.VirtualMemory() // can it ever fail?
+			event := beat.Event{
+				Timestamp: time.Now(),
+				Fields: common.MapStr{
+					"type":    "host",
+					"loadavg": av,
+					"mem":     mem,
+				},
+			}
+			bt.client.Publish(event)
+			logp.Info("Event sent")
+		}
+
+		// net devices counters
+		if bt.config.Host.NetIOCounters {
+			iocs, err := GetNetIOCs(listnetworks)
+			if err != nil {
+				log.Fatal(err) // need to handle it somehow. Just skipping the beat?
+			}
+			// iocs is an array, convert to separate events to make it easier for Kibana
+			for _, v := range iocs {
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":  "network",
+						"netio": v,
+					},
+				}
+				bt.client.Publish(event)
+				logp.Info("Event sent")
+			}
+		}
+
+		// Infiniband port counters
+		if bt.config.Host.IBCounters {
+			// added more logic to traverse/tag multiple NICs and ports
+			// lets unglob the paths only
+			fl, err := filepath.Glob(bt.config.Host.IBCountersPath)
+			if err != nil {
+				log.Fatal(err)
+				// no IB? to check what happens if there is no preceding path
+			}
+			for _, s := range fl {
+				zz := strings.Split(s, "/")
+				//fmt.Println(zz, zz[4], zz[6])
+				nic := zz[4]
+				port := zz[6]
+				ibcs, _ := GetIBCounters(s, listcounters) // remember only give path no added star
+				// I have no error handling yet. Do I need it? Should two globs handle it?
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type": "ibcounters",
+						"ib":   ibcs,
+						"port": port,
+						"nic":  nic,
+						//"path": s, // do we need to store the path in production?
+					},
+				}
+				bt.client.Publish(event)
+				logp.Info("Event sent")
+			}
+		}
+
+		if zps {
+			// ioz defined above, it is the list of pool/io paths
+			for _, v := range ioz {
+				// make the tag
+				pool := strings.Split(v, "/")[5]
+				ios, err := GetZfsPoolIofile(v)
+				if err != nil {
+					log.Fatal(err) // is in fatal here?
+				}
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type": "zfsio",
+						"ios":  ios,
+						"pool": pool,
+					},
+				}
+				bt.client.Publish(event)
+				logp.Info("Event sent")
+			}
+		}
+
+		if zss {
+
+			for _, s := range zstats {
+
+				cs := filepath.Base(s)
+				var ok bool = false
+				// no provision for empty lists! should be explicit stats always
+				// or nothing will be returned
+				
+				if _, ok = listzstats[cs]; ok {
+				   result, err := GetZfsStatfile(s)
+				    //fmt.Println(result, err, s)
+				    if err != nil {
+					log.Fatal(err)
+				    }
+				    
+				event := beat.Event{
+					Timestamp: time.Now(),
+					Fields: common.MapStr{
+						"type":    "zfsstat",
+						"zfsstat": result,
+						"name":    cs,
+					},
+				}
+				bt.client.Publish(event)
+				logp.Info("Event sent")
+			    }
+			}
+		}
+
+		// the original counter
+		// remve from prod version?
+		event := beat.Event{
+			Timestamp: time.Now(),
+			Fields: common.MapStr{
+				"type":    b.Info.Name,
+				"counter": counter,
+			},
+		}
+		bt.client.Publish(event)
+		logp.Info("Event sent")
+		// // trying to outsource it. Works if beat bt passed as follows.
+		//Counter(bt, "counter2", counter)
+		counter++
+		if counter > 2147483647 {
+			counter = 1
+		}
+
+	}
+}
+
+func (bt *Lustrebeat) Stop() {
+	bt.client.Close()
+	close(bt.done)
+}
+@
+
+
+1.14
+log
+@has a bug fails to read in zfs config
+@
+text
+@d240 3
+@
+
+
+1.13
+log
+@completed the hierarchical config. works.
+@
+text
+@d98 1
+@
+
+
+1.12
+log
+@preparing to structure into substruct for each kind.
+@
+text
+@d69 1
+a69 11
+        fmt.Println("Config::", bt.config, bt.config.Zfs)
+
+	llite := bt.config.Llite
+	osc := bt.config.Osc
+	oss := bt.config.Oss
+	mds := bt.config.Mds
+
+	jobstatsm := bt.config.JobstatsM
+	jobstatso := bt.config.JobstatsO
+
+	exports := bt.config.Exports
+d71 11
+d83 2
+a84 3
+
+	getnum := bt.config.GetNumbers
+	listnum := List2Set(bt.config.ListOfNumbers)
+d88 2
+a89 2
+	listcounters := List2Set(bt.config.ListOfCounters) // empty lists should work too, test that!
+	listnetworks := List2Set(bt.config.ListOfNetworks)
+d95 3
+a97 3
+	zss := bt.config.ZfsStats
+	zps := bt.config.ZfsPools
+	listzstats := List2Set(bt.config.ListOfZstats)
+d112 1
+a112 1
+		zstats, err = filepath.Glob(bt.config.ZfsStatsPath)
+d130 1
+a130 1
+		llts := bt.config.LliteStatsPath + "/stats"
+d139 1
+a139 1
+		oscs := bt.config.OscStatsPath + "/stats"
+d153 1
+a153 1
+		mdss := bt.config.MdsStatsPath + "/md_stats" // note that MDS-wide is not stats but md_stats
+d165 1
+a165 1
+			mdex := bt.config.MdsStatsPath + bt.config.ExportSuffix + "/stats"
+d176 1
+a176 1
+		osss := bt.config.OssStatsPath + "/stats"
+d190 1
+a190 1
+			oex := bt.config.OssStatsPath + bt.config.ExportSuffix + "/stats"
+d207 2
+a208 2
+	if jobstatsm {
+		jms := bt.config.MdsStatsPath + "/job_stats"
+d216 2
+a217 2
+	if jobstatso {
+		jos := bt.config.OssStatsPath + "/job_stats"
+d317 2
+a318 2
+		// generic load metrics from gopsutil
+
+d323 3
+a325 2
+
+		if bt.config.LoadAvg || bt.config.MemStat { // why bother separating them, either returns both
+d341 1
+a341 1
+		if bt.config.NetIOCounters {
+d361 1
+a361 1
+		if bt.config.IBCounters {
+d364 1
+a364 1
+			fl, err := filepath.Glob(bt.config.IBCountersPath)
+@
+
+
+1.11
+log
+@working with zfs
+@
+text
+@d68 2
+d92 1
+a92 1
+	fmt.Printf("%T %v\n", bt.config, bt.config)
+@
+
+
+1.10
+log
+@changed counter to reset at maxint
+@
+text
+@d92 25
+d380 1
+a380 1
+						//"path": s, // do we need to store the path in production? 
+a387 4
+		//Zfs stats if requested
+		zss := bt.config.ZfsStats
+		zps := bt.config.ZfsPools
+
+d389 1
+a389 7
+			// is Glob again any better?
+			ioz, err := filepath.Glob("/proc/spl/kstat/zfs/*/io")
+			if err != nil {
+				log.Fatal(err)
+			}
+			//fmt.Printf("%T %v\n", ioz, ioz)
+
+d395 1
+a395 1
+				    log.Fatal(err) // is in fatal here?
+d401 1
+a401 1
+						"ios":   ios,
+d411 15
+a425 13
+			// done with pools, want stats files
+			// make this configurable later
+			stats := []string{"/proc/spl/kstat/zfs/dmu_tx", 
+					 "/proc/spl/kstat/zfs/xuio_stats", 
+					 "/proc/spl/kstat/zfs/fm",
+					 "/proc/spl/kstat/zfs/arcstats" }
+			for _, s := range stats {
+				// need to check for existence for not doing glob?
+				result, err := GetZfsStatfile(s)
+				//fmt.Println(result, err, s)
+				if err != nil {
+				    log.Fatal(err)
+				}
+d429 3
+a431 3
+						"type": "zfsstat",
+						"zfsstat":   result,
+						"name": filepath.Base(s),
+d436 1
+a436 1
+				
+d451 1
+a451 1
+		// // trying to outsource it. works.
+d455 1
+a455 1
+			counter=1
+@
+
+
+1.9
+log
+@compiles with zfs
+@
+text
+@d437 3
+@
+
+
+1.8
+log
+@before adding zfs
+,
+@
+text
+@d157 1
+a157 1
+			
+d226 2
+a227 2
+						    // probably need to add check if k already in
+						    result[k] = v
+d355 60
+a414 1
+						"path": s,
+d419 1
+d434 1
+a434 1
+		// // trying to outsource it. works. 
+@
+
+
+1.7
+log
+@works with kbstats now
+@
+text
+@d343 1
+a343 1
+				fmt.Println(zz, zz[4], zz[6])
+d374 1
+a374 1
+		// // trying to outsource it
+@
+
+
+1.6
+log
+@cosmetic changes
+@
+text
+@a25 1
+
+a46 1
+
+d61 1
+a61 1
+	
+d156 2
+d173 1
+a173 1
+	fmt.Println(statslist, "kbstats::::: ", kbstats)
+d213 1
+a213 1
+				    continue
+d215 1
+a215 1
+				
+d217 1
+a217 1
+				// to determine if I want kbytes. So may me single list and loop aint too good idea?
+d220 1
+a220 1
+						fmt.Println("KBSTATST::::::", statfile, kbstats)
+d224 5
+a228 1
+						fmt.Println(kbs)
+d232 1
+a232 1
+				fs,obj,_,_ := MakeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+d236 3
+a238 3
+						"type":  "lustrestat",
+						"stats": result,
+						"fs": fs,
+d253 1
+a253 1
+				    continue
+d257 1
+a257 1
+				fs,obj,ex,_ := MakeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+d262 3
+a264 3
+						"type":  "lustreexport", // should it be same? idk
+						"stats": result,
+						"fs": fs,
+d280 2
+a281 2
+				err:= JobStat(bt, s)
+				
+d287 1
+a287 1
+		// jobstats loop end
+@
+
+
+1.5
+log
+@outsourced path tagging
+@
+text
+@a124 1
+
+a209 1
+
+a210 1
+
+a245 1
+
+a246 1
+
+d273 1
+a273 3
+
+			fmt.Println(joblist)
+
+a281 1
+				
+@
+
+
+1.4
+log
+@outsourced jobstats
+@
+text
+@a5 1
+	//"io/ioutil"
+a10 3
+	// for yaml-bases parsing of jobstats
+	//"gopkg.in/yaml.v2"
+	//"regexp"
+a26 27
+
+func MakeLustreTagsE(s string) (fs string, object string, client string, ok bool) {
+    // tries to get Lustre FS and {MDT,OST, mounthash} from the path s
+    // also will try to get the client name if that is to be expected
+    //  all the pathes should be under /proc/fs/lustre ?
+    
+     if ok, _ := filepath.Match( "/proc/fs/lustre/*/*", s); ok {
+        // a lustre stats record, should have enough path by match
+         zz := strings.Split(s,"/")
+         kk := strings.Split(zz[5],"-")
+         if len(kk) >= 2 {
+            return kk[0], kk[1], "", true
+         }
+     }
+     if ok, _ := filepath.Match( "/proc/fs/lustre/*/*/exports/*o2ib", s); ok {
+        // an exports stats record
+          zz := strings.Split(s,"/")
+	  kk := strings.Split(zz[5],"-")
+         if ( len(kk) >= 2 ) && (len(zz) >= 8) {
+            return kk[0], kk[1], zz[7], true
+         }
+     }
+     // wtf happened?
+     return "", "", "", false
+}
+
+
+d282 1
+a282 1
+				// trying to outsource the spagetti
+d291 1
+a291 1
+			// jobstats loop end
+@
+
+
+1.3
+log
+@counter to uint64
+@
+text
+@d6 1
+a6 1
+	"io/ioutil"
+d13 2
+a14 2
+	"gopkg.in/yaml.v2"
+	"regexp"
+a29 37
+/*
+type LustrePath struct {
+	Path     string // some path to the stat, might contain  *'s for globbing
+	Kbval    bool   // if we want key-value from the path
+	Filename string // name of the stat, like md_stats or stats
+	F        string // name of Lustre FS, probably from glob
+	O        string // name of an object like MDT or OST
+	E        string // name of the export directiory
+} // dindt use it anywhere yet
+*/
+
+// IB path handling to be inline
+
+// recursive function to deal with Yaml data
+func convert(i interface{}) interface{} {
+	// lifted from the StackOverflow sample. It works.
+	// https://stackoverflow.com/questions/40737122/convert-yaml-to-json-without-struct-golang
+	switch x := i.(type) {
+	case map[interface{}]interface{}:
+		m2 := map[string]interface{}{}
+		for k, v := range x {
+			m2[k.(string)] = convert(v)
+		}
+		return m2
+		/*	case map[string]interface{}:
+			m2 := map[string]interface{}{}
+			for k, v := range x {
+				m2[k.(string)] = convert(v)
+			}
+			return m2 */
+	case []interface{}:
+		for i, v := range x {
+			x[i] = convert(v)
+		}
+	}
+	return i
+}
+d32 2
+a33 2
+func makeLustreTagsE(s string) (fs string, object string, client string, ok bool) {
+    // tries to get Lustre FS and MDT,OST,mounthash from the path s
+d36 1
+d59 1
+a59 1
+type Lustretest struct {
+d72 1
+a72 1
+	bt := &Lustretest{
+d81 2
+a82 2
+func (bt *Lustretest) Run(b *beat.Beat) error {
+	logp.Info("lustretest is running! Hit CTRL-C to stop it.")
+d207 1
+a207 1
+	// Jobstats probably need another list for them?
+d210 1
+a210 1
+	re := regexp.MustCompile(`([a-z]+\:)`) // regexp for jobstats max:12345 out of the loop
+d233 1
+a233 1
+	// MAIN LOOP from boilerplate
+d262 1
+a262 1
+				fs,obj,_,_ := makeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+d289 1
+a289 1
+				fs,obj,ex,_ := makeLustreTagsE(filepath.Dir(statfile)) // somewhat gross to parse-unparse it all the time
+d313 3
+a315 2
+
+				buf, err := ioutil.ReadFile(s)
+d317 2
+a318 1
+					log.Fatal(err)
+a320 52
+				fs,obj,_,_ := makeLustreTagsE(filepath.Dir(s)) // for tagging, common to all records below
+				 
+				buf1 := re.ReplaceAll(buf, []byte("$1 ")) // adding spaces for jammed strings like max:123456
+				buf = nil
+				//fmt.Println(string(buf1))
+
+				// need manual recursion because map[]interface{} is useless
+				// code from https://stackoverflow.com/questions/40737122/convert-yaml-to-json-without-struct-golang
+
+				var data interface{}
+
+				err = yaml.Unmarshal(buf1, &data)
+				if err != nil {
+					log.Fatal(err)
+				}
+
+				data = convert(data)
+
+				// unholy magic of Golang dynamic maps from https://blog.golang.org/json-and-go
+
+				m := data.(map[string]interface{})
+				for k, v := range m {
+					switch vv := v.(type) {
+					case string:
+						fmt.Println(k, "is string", vv)
+					case float64:
+						fmt.Println(k, "is float64", vv)
+					case []interface{}:
+						fmt.Println(k, "is an array:")
+						for _, u := range vv {
+							w := u.(map[string]interface{})
+							//w["metric"] = "jobstats_mds"
+							//w["server"] = s // remember that S is a server name?
+							//fmt.Printf("%v ==>, %v, %T \n --- %v %T \n ", i, u, u, w, w)
+
+							event_jobstat := beat.Event{
+								Timestamp: time.Now(),
+								Fields: common.MapStr{
+									"type":    "jobstat",
+									"jobstat": w,
+									"fs": fs,
+									"object": obj,
+								},
+							}
+							bt.client.Publish(event_jobstat)
+							logp.Info("A jobstat record sent")
+
+						}
+					default:
+						fmt.Println("unknown type")
+					}
+				}
+d409 2
+d416 1
+a416 1
+func (bt *Lustretest) Stop() {
+@
+
+
+1.2
+log
+@working lustretest sources
+@
+text
+@d128 3
+a130 1
+	counter := 1
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@d4 1
+d6 5
+d12 10
+d30 66
+a95 1
+type Lustrebeat struct {
+d108 1
+a108 1
+	bt := &Lustrebeat{
+d115 4
+a118 2
+func (bt *Lustrebeat) Run(b *beat.Beat) error {
+	logp.Info("lustrebeat is running! Hit CTRL-C to stop it.")
+d126 2
+a127 1
+	ticker := time.NewTicker(bt.config.Period)
+d129 139
+d275 209
+d494 1
+d498 1
+a498 1
+func (bt *Lustrebeat) Stop() {
+@

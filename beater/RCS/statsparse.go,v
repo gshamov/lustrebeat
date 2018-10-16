@@ -1,0 +1,520 @@
+head	1.10;
+access;
+symbols;
+locks
+	gshamov:1.10; strict;
+comment	@# @;
+
+
+1.10
+date	2018.10.16.18.12.04;	author gshamov;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	2018.02.13.19.38.06;	author gshamov;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	2018.02.12.17.19.46;	author gshamov;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	2018.02.12.17.19.08;	author gshamov;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	2018.01.22.18.57.06;	author gshamov;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	2018.01.02.20.43.56;	author gshamov;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	2018.01.02.20.41.35;	author gshamov;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	2018.01.02.19.32.54;	author gshamov;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	2018.01.02.18.58.05;	author gshamov;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	2018.01.02.18.54.52;	author gshamov;	state Exp;
+branches;
+next	;
+
+
+desc
+@ working lustretest sources.
+@
+
+
+1.10
+log
+@builds on graham
+@
+text
+@package beater
+
+import (
+	"bufio"
+	"bytes"
+	"fmt"
+	"io/ioutil"
+	//"log" // how do I do logging from beats? May be their logp?
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+//  I have decided to have two structs to supress lots of zeroes for single-val metrics
+
+// For now, lets drop also SumSquared for it is very large and perhaps needs specal handling
+// Also, Units are commented out for saving the space! We can get this from the name? Or document around it?
+
+type LustreStatsRecordLong struct { // structs or maps?
+	Metric  string
+	Samples uint64
+	//Unit    string
+	Min     uint64
+	Max     uint64
+	Sum     uint64
+	//	SumSquared float64
+}
+
+type LustreStatsRecordShort struct { // structs or maps?
+	Metric  string
+	Samples uint64
+	//Unit    string
+}
+
+func MakeLustreTagsE(s string) (fs string, object string, client string, ok bool) {
+	// tries to get Lustre FS and {MDT,OST, mounthash} from the path s
+	// also will try to get the client name if that is to be expected
+	//  all the pathes should be under /proc/fs/lustre ?
+
+	if ok, _ := filepath.Match("/proc/fs/lustre/*/*", s); ok {
+		// a lustre stats record, should have enough path by match
+		zz := strings.Split(s, "/")
+		kk := strings.Split(zz[5], "-")
+		if len(kk) >= 2 {
+			return kk[0], kk[1], "", true
+		}
+	}
+	if ok, _ := filepath.Match("/proc/fs/lustre/*/*/exports/*o2ib", s); ok {
+		// an exports stats record
+		zz := strings.Split(s, "/")
+		kk := strings.Split(zz[5], "-")
+		if (len(kk) >= 2) && (len(zz) >= 8) {
+			return kk[0], kk[1], zz[7], true
+		}
+	}
+	// wtf happened?
+	return "", "", "", false
+}
+
+func GetStatsFile1(s string) (result map[string]interface{}, err error) {
+	// this is the new variant that uses new parsing routine below
+
+	//GAS debug
+	//fmt.Println("from GetStatsFile1", s)
+	//GAS debug
+
+	// here, or later, do some smarted tagging and save to the struct.
+
+	buf, err := ioutil.ReadFile(s)
+	if err != nil {
+		return nil, err
+	}
+	
+	//fmt.Println(string(buf))
+	
+	result = make(map[string]interface{})
+	
+	// this is good for debug but makes a lot of space. Also forces interface{}, along with the units
+	//result["procname"] = s
+
+	// lets loop through the lines and populate the map
+	b := bufio.NewScanner(bytes.NewBuffer(buf)) // am I being an idiot here? Probably; this reader works though
+	for b.Scan() {
+		bs := b.Text()
+		ok := proc2slice(bs, result) // result is a map and thus goes by reference, will be changed
+		if !ok {
+			fmt.Println("error parsing line:", bs)
+		}
+	}
+
+	return result, nil
+}
+
+func proc2slice(bs string, m map[string]interface{}) (ok bool) {
+	// takes a string from stats file, parses it and stores in the map m
+
+	as := bytes.Fields([]byte(bs)) // strings.Fields do not work , unicode?
+
+	var lsl LustreStatsRecordLong
+	var lss LustreStatsRecordShort
+	var err error
+	ok = false
+
+	l := len(as)
+	if l == 3 {
+		// seconds to be skipped
+		//lsr.Name = string(as[0])
+		//lsr.SnapshotSec , _ = strconv.ParseFloat(string(as[1]),64)
+		fmt.Println(l, as, 3)
+		return true
+	} else {
+		if l >= 4 {
+			lss.Metric = string(as[0])
+			lss.Samples, err = strconv.ParseUint(string(as[1]), 10, 64)
+			if err != nil {
+				fmt.Println(err)
+				return false
+			}
+			//lss.Unit = string(as[3])
+			m[lss.Metric] = lss
+			//fmt.Println("lss", lss)
+		}
+		if l >= 7 {
+			// copy over instead of reparsing
+			lsl.Samples = lss.Samples
+			//lsl.Unit = lss.Unit
+			lsl.Metric = lss.Metric
+			lsl.Min, err = strconv.ParseUint(string(as[4]), 10, 64)
+			lsl.Max, err = strconv.ParseUint(string(as[5]), 10, 64)
+			lsl.Sum, err = strconv.ParseUint(string(as[6]), 10, 64)
+			if err != nil {
+				fmt.Println(err)
+				return false
+			}
+
+			m[lsl.Metric] = lsl
+			//fmt.Println("lsl", lsl)
+		}
+		/*if l == 8 {
+			lsl.SumSquared, err = strconv.ParseFloat(string(as[7]), 64)
+			if err != nil {
+				fmt.Println(err)
+				return false
+			}
+			m[lsl.Metric]=lsl
+			//fmt.Println("lsl8", lsl)
+		}*/
+	}
+
+	return true
+}
+
+@
+
+
+1.9
+log
+@removed Metric field
+@
+text
+@d20 1
+a20 1
+	//Metric  string
+d30 1
+a30 1
+	//Metric  string
+d63 3
+d73 3
+a75 1
+
+d109 1
+a109 1
+		//fmt.Println(l, as, 3)
+d113 1
+a113 1
+			//lss.Metric = string(as[0])
+d120 1
+a120 1
+			//m[lss.Metric] = lss
+d127 1
+a127 1
+			//lsl.Metric = lss.Metric
+d136 1
+a136 1
+			//m[lsl.Metric] = lsl
+d145 1
+a145 1
+			//m[lsl.Metric]=lsl
+d152 1
+@
+
+
+1.8
+log
+@commented the Metrics field.
+@
+text
+@d108 1
+a108 1
+			lss.Metric = string(as[0])
+d115 1
+a115 1
+			m[lss.Metric] = lss
+d122 1
+a122 1
+			lsl.Metric = lss.Metric
+d131 1
+a131 1
+			m[lsl.Metric] = lsl
+d140 1
+a140 1
+			m[lsl.Metric]=lsl
+@
+
+
+1.7
+log
+@some changes
+@
+text
+@d20 1
+a20 1
+	Metric  string
+d30 1
+a30 1
+	Metric  string
+@
+
+
+1.6
+log
+@removed units, removed procs paths.
+@
+text
+@d63 1
+a63 1
+	//stag := strings.Split(filepath.Dir(s), "-") // second field May be good for OST but not for llite? not always?
+@
+
+
+1.5
+log
+@cosmetic changes
+@
+text
+@d17 1
+d22 1
+a22 1
+	Unit    string
+d32 1
+a32 1
+	Unit    string
+d72 3
+a74 3
+
+	result["procname"] = s
+	//result["stag"] = stag
+d114 1
+a114 1
+			lss.Unit = string(as[3])
+d121 1
+a121 1
+			lsl.Unit = lss.Unit
+@
+
+
+1.4
+log
+@moved path tagging here
+@
+text
+@a13 1
+
+d19 7
+a25 7
+	Metric     string
+	Samples    uint64
+	Unit       string
+	Min        uint64
+	Max        uint64
+	Sum        uint64
+//	SumSquared float64
+d35 22
+a56 22
+    // tries to get Lustre FS and {MDT,OST, mounthash} from the path s
+    // also will try to get the client name if that is to be expected
+    //  all the pathes should be under /proc/fs/lustre ?
+
+     if ok, _ := filepath.Match( "/proc/fs/lustre/*/*", s); ok {
+        // a lustre stats record, should have enough path by match
+         zz := strings.Split(s,"/")
+         kk := strings.Split(zz[5],"-")
+         if len(kk) >= 2 {
+            return kk[0], kk[1], "", true
+         }
+     }
+     if ok, _ := filepath.Match( "/proc/fs/lustre/*/*/exports/*o2ib", s); ok {
+        // an exports stats record
+          zz := strings.Split(s,"/")
+          kk := strings.Split(zz[5],"-")
+         if ( len(kk) >= 2 ) && (len(zz) >= 8) {
+            return kk[0], kk[1], zz[7], true
+         }
+     }
+     // wtf happened?
+     return "", "", "", false
+d71 1
+a71 1
+	
+d80 1
+a80 1
+		if ! ok {
+d90 1
+a90 1
+	
+d114 1
+a114 1
+			m[lss.Metric]=lss
+d130 1
+a130 1
+			m[lsl.Metric]=lsl
+a145 1
+
+@
+
+
+1.3
+log
+@removed sumsquares
+@
+text
+@d9 1
+a9 1
+	//"path/filepath"
+d11 1
+a11 1
+
+d35 25
+@
+
+
+1.2
+log
+@removed obsolete routines
+@
+text
+@d15 3
+a17 1
+// recently I have decided to have two stricts to supress lots of zeroes for single-val metrics
+d26 1
+a26 1
+	SumSquared float64
+d109 1
+a109 1
+		if l == 8 {
+d117 1
+a117 1
+		}
+@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@a13 83
+/*
+type LustreStatsRecord struct { // structs or maps? I think maps would be slower and harder to code but making less noise.
+	Name        string
+	SnapshotSec float64
+	Samples     uint64
+	Unit        string
+	Min         uint64
+	Max         uint64
+	Sum         uint64 // was float
+	SumSquared  float64
+}
+
+func procLine2Struct(bs string) (lsr LustreStatsRecord) {
+	//
+	// parses a string of Lustre stat file and stores the data in a struct; old noisy variant
+	//
+	as := bytes.Fields([]byte(bs)) // strings.Fields do not work , unicode?
+	//fmt.Printf("%v, %v \n", as, bytes.Fields([]byte(as) ))
+	// undynamic nasty struct way
+	var err error
+	l := len(as)
+	if l == 3 {
+		// seconds
+		lsr.Name = string(as[0])
+		lsr.SnapshotSec, _ = strconv.ParseFloat(string(as[1]), 64)
+	} else {
+		// everythomh else has 4, 7 or 8 records : name, samples, units, min, max, sum, sumsquares
+		// case .. falthrough did not work for some weird effects
+		if l >= 4 {
+			lsr.Name = string(as[0])
+			lsr.Samples, err = strconv.ParseUint(string(as[1]), 10, 64)
+			if err != nil {
+				fmt.Println(err)
+			}
+			lsr.Unit = string(as[3])
+		}
+		if l >= 7 {
+			lsr.Min, _ = strconv.ParseUint(string(as[4]), 10, 64)
+			lsr.Max, _ = strconv.ParseUint(string(as[5]), 10, 64)
+			lsr.Sum, _ = strconv.ParseUint(string(as[6]), 10, 64) // to uint or to float, but mapping conflicts?
+		}
+		if l == 8 {
+			lsr.SumSquared, err = strconv.ParseFloat(string(as[7]), 64) // do we ever need this one or can drop it?
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+
+	}
+	//fmt.Printf("%v\n", lsr)
+	return lsr
+}
+
+
+func GetStatsFile(s string) (result map[string]interface{}, err error) {
+	// old variant that uses maps, too noisy output it gives.
+	// may be better off with lists? but that will be different from yaml shema then
+
+	//stag := strings.Split(filepath.Dir(s), "-") // second field May be good for OST but not for llite? not always?
+	// here, or later, do some smarted tagging and save to the struct.
+
+	buf, err := ioutil.ReadFile(s)
+	if err != nil {
+		return nil, err
+	}
+
+	result = make(map[string]interface{})
+	result["procname"] = s
+	//result["stag"] = stag
+
+	// lets loop through the lines and populate the map
+	b := bufio.NewScanner(bytes.NewBuffer(buf)) // am I being an idiot here? Probably; this reader works though
+	for b.Scan() {
+		bs := b.Text()
+		lsr1 := procLine2Struct(bs)
+		result[lsr1.Name] = lsr1
+	}
+
+	return result, nil
+}
+
+
+*/
+@

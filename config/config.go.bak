@@ -1,0 +1,202 @@
+// Config is put into a different package to prevent cyclic imports in case
+// it is needed in several locations
+
+package config
+
+import "time"
+
+	// what to collect. Llite is only on client, Osc on client and mds, Mds and Oss are them.
+	// jobstats are separate config item
+	// exports are also a separate config item
+
+// hardcoding the Client stats. Assumed FS name 'lustre'
+//const llite_stats = "/proc/fs/lustre/llite/lustre-*/stats" // one per FS
+//const osc_stats = "/proc/fs/lustre/osc/lustre-OST*/stats"  // one per FS per OST
+
+//Some of MDS stats. No exports yet.
+//const mds_stats string = "/proc/fs/lustre/mdt/*/md_stats"
+//const mds_jobstat string = "/proc/fs/lustre/mdt/*/job_stats"
+
+//some of OSS stats. No exports yet.
+
+//const oss_stats string = "/proc/fs/lustre/obdfilter/*/stats"
+//const oss_jobstat string = "/proc/fs/lustre/obdfilter/*/job_stats"
+
+type Config struct {
+	Period time.Duration `config:"period"`
+	//client	
+	Llite     bool `config:"llite"`
+        Osc       bool `config:"osc"`
+	
+	//mds
+	Mds       bool `config:"mds"`
+	JobstatsM bool `config:"jobstatsm"`
+
+	//oss
+	Oss       bool `config:"oss"`
+	JobstatsO bool `config:"jobstatso"`
+
+	Exports  bool `config:"exports"`
+	
+	//paths
+	LliteStatsPath string `config:"llite_stats_path"`
+	OscStatsPath   string `config:"osc_stats_path"`
+	MdsStatsPath   string `config:"mds_stats_path"`
+	OssStatsPath   string `config:"oss_stats_path"`
+	ExportSuffix   string `config:"exports_suffix"`
+	
+	GetNumbers bool `config:"getnumbers"`
+	ListOfNumbers []string `config:"list_of_numbers"`
+	
+	LoadAvg bool `config:"loadavg"`
+	MemStat bool `config:"memstat"`
+	IBCounters bool `config:"ibcounters"`
+	NetIOCounters bool `config:"netiocounters"`
+
+	IBCountersPath string `config:"ib_counters_path"`
+
+	ListOfCounters []string `config:"list_of_counters"`
+	ListOfNetworks []string `config:"list_of_networs"`
+	
+	//Zfs stats ans pools
+	ZfsStats bool `config:"zfsstats"`
+	ZfsPools bool `config:"zfspools"`
+	ZfsStatsPath string `config:"zfs_stats_path"`
+	ListOfZstats []string `config:"list_of_zstats"`
+	
+	Zfs ZfsConfig `config:"zfs"`
+	Host HostConfig `config:"host"`
+	Lustre LustreConfig `config:"lustre"`
+}
+
+type LustreConfig struct {
+	//client	
+	Llite     bool `config:"llite"`
+        Osc       bool `config:"osc"`
+	
+	//mds
+	Mds       bool `config:"mds"`
+	Jobstats bool `config:"jobstats"`
+
+	//oss
+	Oss       bool `config:"oss"`
+	//JobstatsO bool `config:"jobstatso"`
+
+	Exports  bool `config:"exports"`
+	
+	//paths
+	LliteStatsPath string `config:"llite_stats_path"`
+	OscStatsPath   string `config:"osc_stats_path"`
+	MdsStatsPath   string `config:"mds_stats_path"`
+	OssStatsPath   string `config:"oss_stats_path"`
+	ExportSuffix   string `config:"exports_suffix"`
+	
+	GetNumbers bool `config:"getnumbers"`
+	ListOfNumbers []string `config:"list_of_numbers"`
+
+}
+
+type ZfsConfig struct {
+	//Zfs stats ans pools
+	Stats bool `config:"zfsstats"`
+	Pools bool `config:"zfspools"`
+	ZfsStatsPath string `config:"zfs_stats_path"`
+	ListOfZstats []string `config:"list_of_zstats"`
+}
+
+type HostConfig struct {
+	// host metrics, from gopsutils and self made for IB
+	LoadAvg bool `config:"loadavg"`
+	MemStat bool `config:"memstat"`
+	IBCounters bool `config:"ibcounters"`
+	NetIOCounters bool `config:"netiocounters"`
+
+	IBCountersPath string `config:"ib_counters_path"`
+
+	ListOfCounters []string `config:"list_of_counters"`
+	ListOfNetworks []string `config:"list_of_networs"`
+	
+}
+
+var DefaultConfig = Config{
+	Period: 10 * time.Second,
+	
+	Llite:     true,
+	Osc:       false,
+	Mds:       false,
+	JobstatsM: false,
+	Exports:  false,
+	Oss:       false,
+	JobstatsO: false,
+	
+	LliteStatsPath: "/proc/fs/lustre/llite/*", 
+	OscStatsPath:   "/proc/fs/lustre/osc/*",  
+	MdsStatsPath:   "/proc/fs/lustre/mdt/*",
+	OssStatsPath:   "/proc/fs/lustre/obdfilter/*",
+	ExportSuffix:   "/exports/*o2ib",
+
+	ZfsStatsPath:   "/proc/spl/kstat/zfs/*",    
+	
+	GetNumbers: false,
+	ListOfNumbers:  []string{"filesfree", "filestotal", "kbytesavail", "kbytesfree", "kbytestotal", },
+	ListOfCounters: []string{"port_rcv_packets", "port_rcv_data", "port_xmit_data", "port_xmit_packets", "symbol_error", },
+	ListOfNetworks: []string{"ib0", "lo", },
+	ListOfZstats:   []string{"dmu_tx", "fm", "arcstats", "xuio_stats", }, // zil and zfetchstats and vdev_cache_stats are all zeroes
+	
+	// here go generic host metrics: infiniband, load and memory
+        LoadAvg: false,
+        MemStat: false,
+        IBCounters: false,
+        NetIOCounters: false,
+        
+        // should work also for OPA
+        IBCountersPath: "/sys/class/infiniband/*/ports/*/counters",
+        
+        //raw ZFS stats
+	ZfsStats: false,
+	ZfsPools: false,	        
+	
+	//attempt to make the spagetti yaml hierarchical
+	Zfs: DefaultZfsConfig,
+	Host: DefaultHostConfig,
+	Lustre: DefaultLustreConfig,
+}
+
+var DefaultLustreConfig = LustreConfig {
+	Llite:     true,
+	Osc:       false,
+	Mds:       false,
+	Jobstats: false,
+	Exports:  false,
+	Oss:       false,
+	//JobstatsO: false,
+	
+	LliteStatsPath: "/proc/fs/lustre/llite/*", 
+	OscStatsPath:   "/proc/fs/lustre/osc/*",  
+	MdsStatsPath:   "/proc/fs/lustre/mdt/*",
+	OssStatsPath:   "/proc/fs/lustre/obdfilter/*",
+	ExportSuffix:   "/exports/*o2ib",
+
+	GetNumbers: false,
+	ListOfNumbers:  []string{"filesfree", "filestotal", "kbytesavail", "kbytesfree", "kbytestotal", },
+
+}
+
+var DefaultHostConfig = HostConfig{
+	ListOfCounters: []string{"port_rcv_packets", "port_rcv_data", "port_xmit_data", "port_xmit_packets", "symbol_error", },
+	ListOfNetworks: []string{"ib0", "lo", },
+        LoadAvg: false,
+        MemStat: false,
+        IBCounters: false,
+        NetIOCounters: false,
+        // should work also for OPA
+        IBCountersPath: "/sys/class/infiniband/*/ports/*/counters",
+}
+
+var DefaultZfsConfig = ZfsConfig{
+        //raw ZFS stats
+	Stats: false,
+	Pools: false,	        
+	ZfsStatsPath:   "/proc/spl/kstat/zfs/*",    
+	ListOfZstats:   []string{"dmu_tx", "fm", "arcstats", "xuio_stats", }, // zil and zfetchstats and vdev_cache_stats are all zeroes
+}

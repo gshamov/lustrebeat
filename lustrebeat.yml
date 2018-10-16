@@ -1,0 +1,146 @@
+#################### Lustretest Configuration Example #########################
+
+############################# Lustretest ######################################
+
+lustrebeat:
+  # Defines how often an event is sent to the output
+  period: 30s
+  lustre:
+  # Switches on what to collect go below.
+  # llite is on client only
+    llite: true
+  # osc is on client and mds
+    osc: true
+  # collect MDS stats
+    mds: false
+  # collect OSS stats
+    oss: false
+  # collect jobstats on MDS and OSS
+    exports: false
+  # the above is per client exports
+    jobstats: false
+  # collect systems metric:
+  #loadavg: true
+  #memstat: true
+  # collects network interface and infiniband counters. OPA should work.
+  # ToFix : getnum is probably broken do not use, it collects lustre files like kbtotal
+    getnumbers: false
+  ## empty list_of_networks collects everything, default is ["lo","ib0"]
+#  list_of_networs: []
+  ## empty list of (infiniband) collects everything, default is to do port_xmit_ and port_rcv_ only
+  ## I repeat, empty list is no default, uncomment to get all of it
+#  list_of_counters: []
+  zfs:
+     pools: false
+     stats: false
+     #list_of_zstats: []
+  host:
+     loadavg: true
+     memstat: false
+     netiocounters: false
+     ibcounters: false
+     #list_of_counters: []
+     #list_of_networs: []
+
+# list_of_zstats: []
+# ## this zfsstats one will never collect anything on the empty list; 
+# ## defaults to ["dmu_tx","fm","arcstats","xuio_stats"]
+
+#================================ General =====================================
+
+# The name of the shipper that publishes the network data. It can be used to group
+# all the transactions sent by a single shipper in the web interface.
+name: aurochs-shipper
+
+# The tags of the shipper are included in their own field with each
+# transaction published.
+#tags: ["service-X", "web-tier"]
+
+# Optional fields that you can specify to add additional information to the
+# output.
+#fields:
+#  env: staging
+
+
+#============================== Dashboards =====================================
+# These settings control loading the sample dashboards to the Kibana index. Loading
+# the dashboards is disabled by default and can be enabled either by setting the
+# options here, or by using the `-setup` CLI flag or the `setup` command.
+#setup.dashboards.enabled: false
+
+# The URL from where to download the dashboards archive. By default this URL
+# has a value which is computed based on the Beat name and version. For released
+# versions, this URL points to the dashboard archive on the artifacts.elastic.co
+# website.
+#setup.dashboards.url:
+
+#============================== Kibana =====================================
+
+# Starting with Beats version 6.0.0, the dashboards are loaded via the Kibana API.
+# This requires a Kibana endpoint configuration.
+setup.kibana:
+
+  # Kibana Host
+  # Scheme and port can be left out and will be set to the default (http and 5601)
+  # In case you specify and additional path, the scheme is required: http://localhost:5601/path
+  # IPv6 addresses should always be defined as: https://[2001:db8::1]:5601
+  #host: "localhost:5601"
+
+#============================= Elastic Cloud ==================================
+
+# These settings simplify using lustretest with the Elastic Cloud (https://cloud.elastic.co/).
+
+# The cloud.id setting overwrites the `output.elasticsearch.hosts` and
+# `setup.kibana.host` options.
+# You can find the `cloud.id` in the Elastic Cloud web UI.
+#cloud.id:
+
+# The cloud.auth setting overwrites the `output.elasticsearch.username` and
+# `output.elasticsearch.password` settings. The format is `<user>:<pass>`.
+#cloud.auth:
+
+#================================ Outputs =====================================
+
+# Configure what output to use when sending the data collected by the beat.
+
+#-------------------------- Elasticsearch output ------------------------------
+#output.elasticsearch:
+  # Array of hosts to connect to.
+  #hosts: ["aurochs.local:9200"]
+
+  # Optional protocol and basic auth credentials.
+  #protocol: "https"
+  #username: "elastic"
+  #password: "changeme"
+
+#----------------------------- Logstash output --------------------------------
+#output.logstash:
+  # The Logstash hosts
+  #hosts: ["206.12.97.15:5044"]
+
+  # Optional SSL. By default is off.
+  # List of root certificates for HTTPS server verifications
+  #ssl.certificate_authorities: ["/etc/pki/root/ca.pem"]
+
+  # Certificate for SSL client authentication
+  #ssl.certificate: "/etc/pki/client/cert.pem"
+
+  # Client Certificate Key
+  #ssl.key: "/etc/pki/client/cert.key"
+
+# ----- nice file output for debugging w/o LS ES access ------
+output.file:
+  path: "/scratch/gshamov"
+  filename: "lustrebeat.txt"
+
+
+#================================ Logging =====================================
+
+# Sets log level. The default log level is info.
+# Available log levels are: critical, error, warning, info, debug
+#logging.level: debug
+
+# At debug level, you can selectively enable logging only for some components.
+# To enable all selectors use ["*"]. Examples of other selectors are "beat",
+# "publish", "service".
+#logging.selectors: ["*"]

@@ -1,0 +1,7 @@
+################### Lustrebeat Configuration Example #########################
+
+############################# Lustrebeat ######################################
+
+lustrebeat:
+  # Defines how often an event is sent to the output
+  period: 1s
