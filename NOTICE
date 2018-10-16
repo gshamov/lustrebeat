@@ -1,5 +1,11 @@
 lustrebeat
 Copyright 2017 Grigory Shamov, University of Manitoba
 
+This code is based on and uses ElasticSearch Beats library which is Apache License.
+So I guess, everything is Apache Licensed.
+
 This product includes software developed by The Apache Software
 Foundation (http://www.apache.org/).
+
+
+
