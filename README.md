@@ -4,13 +4,13 @@ Welcome to Lustrebeat.
 
 Lustrebeat was a brute-force attempt, made in 2017, to grab all the metrics from various "stats" files of the Lustre filesystem, and that without much thinking. So the design decisions were as follows.
 
-* Using Golang glob to check for the stats files and grab whatever found. Tag the values by the components of the path (FS name, OST name, etc.)
-* Using a simple parser for {llite, OST, MDT} stats files that would be agnostic to the names of the counters. Every line will be collected.
-* Lustre Job Stats: they are actually Yaml. Using Go-Yaml2 library to parse them in one blow, again, collecting every metric.
+* Using Golang glob to check for the stats files and grab whatever found. Tag the values by the components of the path (FS name, OST name, etc.) of each of the stat files.
+* Using a simple parser for {llite, OST, MDT} stats files that would be agnostic to the names of the fields there. Every line will be collected.
+* Lustre Job Stats: they are actually Yaml. Using Go-Yaml2 library to parse them in one blow, again, collecting every metric there.
 * Single ES document per stat file (as opposed to single-metric-value documents).
 * Following the Metricbeat ideology, pass the raw metrics/counters to ES or LS, withot any attempts to calculate rates etc. Everything to be done on the ES side.
-* In addition to Lustre stats, generic host metrics (CPU, Memory, Network etc.) were added, using the excellent shirou library.
-* Plus Infiniband counters and ZFS pool and stats
+* In addition to Lustre stats, generic host metrics (CPU, Memory, Network etc.) were added, using the excellent [Shirou gopsutil library](https://github.com/shirou/gopsutil).
+* Plus Infiniband counters and ZFS pool and stats since interconnect is often IN or OPA and the storage backend is ZFS.
 
 The drawback of this approach is obvious: there are too many metrics collected on any Lustre system in production. Especially if Exports and Jobstats collection is turned on.  
 
@@ -31,20 +31,20 @@ module load go; module load python
 virtualenv ck; source ck/bin/activate; pip install cookiecutter
 ```
 
-* The following Golang packages: needs to be go get'd
-
-```
-go get github.com/gshamov/gopsutil/mem
-go get github.com/shirou/gopsutil
-go get gopkg.in/yaml.v2	
-```
-
-* And, finally, checkout a "good" version of beats into $GOPATH as follows. This one tested with 6.1.x .
+* Checkout a "good" version of beats into $GOPATH as follows. This one tested with 6.1.x .
 
 ```
 mkdir -p $GOPATH/src/github.com/elastic/
 cd $GOPATH/src/github.com/elastic/
 git clone -b v6.1.4 https://github.com/elastic/beats/
+```
+
+* The following Golang packages: needs to be go get'd
+
+```
+go get github.com/gshamov/gopsutil/mem  # that one isnt really necessary, was an experiment for committed_as. Shirou does it all!
+go get github.com/shirou/gopsutil
+go get gopkg.in/yaml.v2	
 ```
 
 ### Init Project
@@ -153,3 +153,8 @@ make package
 ```
 
 This will fetch and create all images required for the build process. The hole process to finish can take several minutes.
+
+## Similar / better projects
+
+* [HPE Prometheus Lustre Exporter](https://github.com/HewlettPackard/lustre_exporter)
+* [Telegraf lustre2 module](https://github.com/influxdata/telegraf/tree/master/plugins/inputs/lustre2)
