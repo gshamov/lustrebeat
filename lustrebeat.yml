@@ -106,7 +106,7 @@ setup.kibana:
 #-------------------------- Elasticsearch output ------------------------------
 #output.elasticsearch:
   # Array of hosts to connect to.
-  #hosts: ["aurochs.local:9200"]
+  #hosts: ["localhost:9200"]
 
   # Optional protocol and basic auth credentials.
   #protocol: "https"
@@ -116,7 +116,7 @@ setup.kibana:
 #----------------------------- Logstash output --------------------------------
 #output.logstash:
   # The Logstash hosts
-  #hosts: ["206.12.97.15:5044"]
+  #hosts: ["192.168.0.15:5044"]
 
   # Optional SSL. By default is off.
   # List of root certificates for HTTPS server verifications
@@ -130,8 +130,8 @@ setup.kibana:
 
 # ----- nice file output for debugging w/o LS ES access ------
 output.file:
-  path: "/scratch/gshamov"
-  filename: "lustrebeat.txt"
+  path: "/tmp"
+  filename: "lustrebeat.json"
 
 
 #================================ Logging =====================================
